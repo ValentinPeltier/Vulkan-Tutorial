@@ -19,7 +19,7 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-const std::vector<const char*> validationLayers = {
+const std::vector<const char *> validationLayers = {
 	"VK_LAYER_LUNARG_standard_validation"
 };
 
@@ -210,7 +210,7 @@ public:
 		vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
 
 		for (const VkPhysicalDevice &device : physicalDevices) {
-			if (isDeviceSuitable(device)) {
+			if (isPhysicalDeviceSuitable(device)) {
 				physicalDevice = device;
 				break;
 			}
@@ -221,7 +221,7 @@ public:
 		}
 	}
 
-	bool isDeviceSuitable(VkPhysicalDevice device) {
+	bool isPhysicalDeviceSuitable(VkPhysicalDevice device) {
 		QueueFamilyIndices indices = findQueueFamilies(device);
 
 		return indices.isComplete();

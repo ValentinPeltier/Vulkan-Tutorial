@@ -29,7 +29,7 @@ public:
 	const T* operator &() const {
 		return &object;
 	}
-
+	
 	T* replace() {
 		cleanup();
 		return &object;
@@ -53,7 +53,7 @@ public:
 
 private:
 	T object{ VK_NULL_HANDLE };
-	std::function<void(T)> deleter;
+	std::function<void (T)> deleter;
 
 	void cleanup() {
 		if (object != VK_NULL_HANDLE) {

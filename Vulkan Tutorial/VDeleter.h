@@ -26,7 +26,7 @@ public:
 		cleanup();
 	}
 
-	const T* operator &() const {
+	const T* operator&() const {
 		return &object;
 	}
 	

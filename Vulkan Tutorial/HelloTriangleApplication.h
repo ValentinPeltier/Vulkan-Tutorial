@@ -56,6 +56,7 @@ public:
 		mainLoop();
 	}
 
+private:
 	void initWindow() {
 		// Init GLFW
 		glfwInit();
@@ -77,6 +78,7 @@ public:
 		}
 
 		pickPhysicalDevice();
+		createLogicalDevice();
 	}
 
 	void mainLoop() {
@@ -202,7 +204,7 @@ public:
 		vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
 		if (deviceCount == 0) {
-			throw std::runtime_error("No graphics cards available to support Vulkan.");
+			throw std::runtime_error("No graphics card available to support Vulkan.");
 		}
 
 		// Get list of physical devices
@@ -255,11 +257,47 @@ public:
 		return indices;
 	}
 
-private:
+	void createLogicalDevice() {
+		// Queue info
+		QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+		const float queuePriority = 1.0f;
+
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily;
+		queueCreateInfo.queueCount = 1;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+
+		// Device features info
+		VkPhysicalDeviceFeatures deviceFeatures = {};
+
+		// Logical device info
+		VkDeviceCreateInfo deviceCreateInfo = {};
+		deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+		deviceCreateInfo.queueCreateInfoCount = 1;
+		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+		
+		deviceCreateInfo.enabledExtensionCount = 0;
+		if (enableValidationLayers) {
+			deviceCreateInfo.enabledLayerCount = validationLayers.size();
+			deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
+		}
+		else {
+			deviceCreateInfo.enabledLayerCount = 0;
+		}
+
+		if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, device.replace()) != VK_SUCCESS) {
+			throw std::runtime_error("Logical device creation failed.");
+		}
+	}
+
+	// Members
 	GLFWwindow *window;
 	VDeleter<VkInstance> instance{ vkDestroyInstance };
 	VDeleter<VkDebugReportCallbackEXT> callback{ instance, DestroyDebugReportCallbackEXT };
 	VkPhysicalDevice physicalDevice{ VK_NULL_HANDLE };
+	VDeleter<VkDevice> device{ vkDestroyDevice };
 };
 
 #endif

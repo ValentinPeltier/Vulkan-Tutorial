@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <vector>
 #include <cstring>
+#include <set>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -27,7 +28,7 @@ const std::vector<const char *> validationLayers = {
 const int WIDTH = 800, HEIGHT = 600;
 const char *TITLE = "Vulkan Tutorial";
 
-// Debug report callback
+// Debug report callback creation
 VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCallbackCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugReportCallbackEXT *pCallback) {
 	// Check debug report extension is available
 	auto func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
@@ -69,14 +70,9 @@ private:
 	}
 
 	void initVulkan() {
-		// Instance
 		createInstance();
-
-		// Validation layers
-		if (enableValidationLayers) {
-			setupDebugCallback();
-		}
-
+		setupDebugReportCallback();
+		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
 	}
@@ -132,7 +128,11 @@ private:
 		}
 	}
 
-	void setupDebugCallback() {
+	void setupDebugReportCallback() {
+		if (!enableValidationLayers) {
+			return;
+		}
+
 		// Debug report info
 		VkDebugReportCallbackCreateInfoEXT createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
@@ -140,7 +140,7 @@ private:
 		createInfo.pfnCallback = debugCallback;
 
 		// Create debug report callback
-		if (CreateDebugReportCallbackEXT(instance, &createInfo, nullptr, callback.replace()) != VK_SUCCESS) {
+		if (CreateDebugReportCallbackEXT(instance, &createInfo, nullptr, debugReportCallback.replace()) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to set up debug report callback.");
 		}
 	}
@@ -230,7 +230,7 @@ private:
 	}
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
-		QueueFamilyIndices indices;
+		QueueFamilyIndices families;
 
 		// Get queue family count
 		uint32_t queueFamilyCount = 0;
@@ -242,31 +242,45 @@ private:
 
 		int i = 0;
 		for (const auto &queueFamily : queueFamilies) {
-			// Check if queue family is able to process the commands
+			// Graphic queue family
 			if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-				indices.graphicsFamily = i;
+				families.graphicsFamily = i;
 			}
 
-			if (indices.isComplete()) {
+			// Presentation queue family
+			VkBool32 presentSupport = false;
+			vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+			if (queueFamily.queueCount > 0 && presentSupport) {
+				families.presentFamily = i;
+			}
+
+			if (families.isComplete()) {
 				break;
 			}
 
 			i++;
 		}
 
-		return indices;
+		return families;
 	}
 
 	void createLogicalDevice() {
 		// Queue info
 		QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-		const float queuePriority = 1.0f;
 
-		VkDeviceQueueCreateInfo queueCreateInfo = {};
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily;
-		queueCreateInfo.queueCount = 1;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
+		const float queuePriority = 1.0f;
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		std::set<int> uniqueQueueFamilies{ indices.graphicsFamily, indices.presentFamily };
+
+		for (const int queueFamily : uniqueQueueFamilies) {
+			VkDeviceQueueCreateInfo queueCreateInfo = {};
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = queueFamily;
+			queueCreateInfo.queueCount = 1;
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+
+			queueCreateInfos.push_back(queueCreateInfo);
+		}
 
 		// Device features info
 		VkPhysicalDeviceFeatures deviceFeatures = {};
@@ -274,8 +288,8 @@ private:
 		// Logical device info
 		VkDeviceCreateInfo deviceCreateInfo = {};
 		deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-		deviceCreateInfo.queueCreateInfoCount = 1;
+		deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
+		deviceCreateInfo.queueCreateInfoCount = queueCreateInfos.size();
 		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 		
 		deviceCreateInfo.enabledExtensionCount = 0;
@@ -290,14 +304,30 @@ private:
 		if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, device.replace()) != VK_SUCCESS) {
 			throw std::runtime_error("Logical device creation failed.");
 		}
+
+		/*vkGetDeviceQueue(device, indices.graphicsFamily, 0, &graphicsQueue);
+		*/
+		vkGetDeviceQueue(device, indices.presentFamily, 0, &presentQueue);
 	}
 
+	void createSurface() {
+		if (glfwCreateWindowSurface(instance, window, nullptr, surface.replace()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create window surface.");
+		}
+	}
+	
 	// Members
 	GLFWwindow *window;
+
 	VDeleter<VkInstance> instance{ vkDestroyInstance };
-	VDeleter<VkDebugReportCallbackEXT> callback{ instance, DestroyDebugReportCallbackEXT };
+	VDeleter<VkSurfaceKHR> surface{ instance, vkDestroySurfaceKHR };
+	VDeleter<VkDebugReportCallbackEXT> debugReportCallback{ instance, DestroyDebugReportCallbackEXT };
+
 	VkPhysicalDevice physicalDevice{ VK_NULL_HANDLE };
 	VDeleter<VkDevice> device{ vkDestroyDevice };
+
+	VkQueue graphicsQueue;
+	VkQueue presentQueue;
 };
 
 #endif

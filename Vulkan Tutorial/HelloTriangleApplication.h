@@ -11,7 +11,7 @@
 #include <GLFW/glfw3.h>
 
 #include "VDeleter.h"
-#include "QueueFamily.h"
+#include "structs.h"
 
 // Validation layers
 #ifdef NDEBUG
@@ -20,8 +20,12 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-const std::vector<const char *> validationLayers = {
+const std::vector<const char *> validationLayers {
 	"VK_LAYER_LUNARG_standard_validation"
+};
+
+const std::vector<const char *> deviceExtensions {
+	"VK_KHR_swapchain"
 };
 
 // Window parameters
@@ -58,6 +62,7 @@ public:
 	}
 
 private:
+	// Init
 	void initWindow() {
 		// Init GLFW
 		glfwInit();
@@ -88,10 +93,11 @@ private:
 		glfwDestroyWindow(window);
 	}
 
+	// Create instance
 	void createInstance() {
 		// Layers
 		if (enableValidationLayers && !checkValidationLayerSupport()) {
-			throw std::runtime_error("Validation layers requested but not available.");
+			throw std::runtime_error("Validation layers not available.");
 		}
 
 		// App info
@@ -103,10 +109,9 @@ private:
 		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 		appInfo.apiVersion = VK_API_VERSION_1_0;
 
-		// Get required extensions
+		// Instance info
 		std::vector<const char *>extensions = getRequiredExtensions();
 
-		// Instance info
 		VkInstanceCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 		createInfo.pApplicationInfo = &appInfo;
@@ -125,23 +130,6 @@ private:
 		// Create instance
 		if (vkCreateInstance(&createInfo, nullptr, instance.replace()) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create instance");
-		}
-	}
-
-	void setupDebugReportCallback() {
-		if (!enableValidationLayers) {
-			return;
-		}
-
-		// Debug report info
-		VkDebugReportCallbackCreateInfoEXT createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-		createInfo.flags = VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-		createInfo.pfnCallback = debugCallback;
-
-		// Create debug report callback
-		if (CreateDebugReportCallbackEXT(instance, &createInfo, nullptr, debugReportCallback.replace()) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to set up debug report callback.");
 		}
 	}
 
@@ -181,7 +169,6 @@ private:
 		const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
 		for (unsigned int i = 0; i < glfwExtensionCount; i++) {
-			// Store them in a vector
 			extensions.push_back(glfwExtensions[i]);
 		}
 
@@ -192,12 +179,38 @@ private:
 		return extensions;
 	}
 
+	// Setup debug report callback
+	void setupDebugReportCallback() {
+		if (!enableValidationLayers) {
+			return;
+		}
+
+		// Debug report info
+		VkDebugReportCallbackCreateInfoEXT createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+		createInfo.flags = VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+		createInfo.pfnCallback = debugCallback;
+
+		// Create debug report callback
+		if (CreateDebugReportCallbackEXT(instance, &createInfo, nullptr, debugReportCallback.replace()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to set up debug report callback.");
+		}
+	}
+
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objType, uint64_t obj, size_t location, int32_t code, const char *layerPrefix, const char *msg, void *userData) {
 		std::cerr << "Validation layer: " << msg << std::endl;
 
 		return VK_FALSE;
 	}
 
+	// Create surface
+	void createSurface() {
+		if (glfwCreateWindowSurface(instance, window, nullptr, surface.replace()) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create window surface.");
+		}
+	}
+
+	// Pick physical device
 	void pickPhysicalDevice() {
 		// Get number of physical devices able to support Vulkan
 		uint32_t deviceCount = 0;
@@ -224,9 +237,17 @@ private:
 	}
 
 	bool isPhysicalDeviceSuitable(VkPhysicalDevice device) {
-		QueueFamilyIndices indices = findQueueFamilies(device);
+		QueueFamilyIndices queueFamilies = findQueueFamilies(device);
 
-		return indices.isComplete();
+		bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+		bool swapchainAdequate = false;
+		if (extensionsSupported) {
+			SwapchainSupportDetails swapchainDetails = querySwapchainSupport(device);
+			swapchainAdequate = !swapchainDetails.formats.empty() && !swapchainDetails.presentModes.empty();
+		}
+
+		return queueFamilies.isComplete() && extensionsSupported && swapchainAdequate;
 	}
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
@@ -264,8 +285,75 @@ private:
 		return families;
 	}
 
+	bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
+		uint32_t extensionCount = 0;
+		vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+		std::vector<VkExtensionProperties> extensions(extensionCount);
+		vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, extensions.data());
+
+		for (const char *deviceExtension : deviceExtensions) {
+			bool found = false;
+
+			for (const VkExtensionProperties &extension : extensions) {
+				if (strcmp(extension.extensionName, deviceExtension) == 0) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	SwapchainSupportDetails querySwapchainSupport(VkPhysicalDevice device) {
+		SwapchainSupportDetails details;
+
+		// Surface capabilities
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+		// Surface formats
+		uint32_t surfaceFormatCount = 0;
+		vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surfaceFormatCount, nullptr);
+
+		if (surfaceFormatCount != 0) {
+			details.formats.resize(surfaceFormatCount);
+			vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surfaceFormatCount, details.formats.data());
+		}
+
+		// Surface present modes
+		uint32_t presentModeCount = 0;
+		vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+
+		if (presentModeCount != 0) {
+			details.presentModes.resize(presentModeCount);
+			vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
+		}
+
+		return details;
+	}
+
+	VkSurfaceFormatKHR chooseSwapchainSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats) {
+		if (availableFormats.size() == 1 && availableFormats[0].format == VK_FORMAT_UNDEFINED) {
+			return {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+		}
+
+		for (const VkSurfaceFormatKHR &availableFormat : availableFormats) {
+			if (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+				return availableFormat;
+			}
+		}
+
+		return availableFormats[0];
+	}
+
+	// Create logical device
 	void createLogicalDevice() {
-		// Queue info
+		// Queue families infos
 		QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
 		const float queuePriority = 1.0f;
@@ -292,7 +380,9 @@ private:
 		deviceCreateInfo.queueCreateInfoCount = queueCreateInfos.size();
 		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 		
-		deviceCreateInfo.enabledExtensionCount = 0;
+		deviceCreateInfo.enabledExtensionCount = deviceExtensions.size();
+		deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+		
 		if (enableValidationLayers) {
 			deviceCreateInfo.enabledLayerCount = validationLayers.size();
 			deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
@@ -305,22 +395,20 @@ private:
 			throw std::runtime_error("Logical device creation failed.");
 		}
 
-		/*vkGetDeviceQueue(device, indices.graphicsFamily, 0, &graphicsQueue);
-		*/
+		vkGetDeviceQueue(device, indices.graphicsFamily, 0, &graphicsQueue);
 		vkGetDeviceQueue(device, indices.presentFamily, 0, &presentQueue);
 	}
-
-	void createSurface() {
-		if (glfwCreateWindowSurface(instance, window, nullptr, surface.replace()) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to create window surface.");
-		}
-	}
 	
+
+	// --------------------
+
+
 	// Members
 	GLFWwindow *window;
 
 	VDeleter<VkInstance> instance{ vkDestroyInstance };
 	VDeleter<VkSurfaceKHR> surface{ instance, vkDestroySurfaceKHR };
+
 	VDeleter<VkDebugReportCallbackEXT> debugReportCallback{ instance, DestroyDebugReportCallbackEXT };
 
 	VkPhysicalDevice physicalDevice{ VK_NULL_HANDLE };

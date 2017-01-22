@@ -351,6 +351,8 @@ private:
 		return availableFormats[0];
 	}
 
+
+
 	// Create logical device
 	void createLogicalDevice() {
 		// Queue families infos

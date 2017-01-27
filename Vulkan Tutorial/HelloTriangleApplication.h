@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <set>
+#include <algorithm>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -351,7 +352,32 @@ private:
 		return availableFormats[0];
 	}
 
+	VkPresentModeKHR chooseSwapchainPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes) {
+		for (const VkPresentModeKHR &availablePresentMode : availablePresentModes) {
+			if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+				return availablePresentMode;
+			}
+		}
 
+		return VK_PRESENT_MODE_FIFO_KHR;
+	}
+
+	VkExtent2D chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR &capabilities) {
+		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+			return capabilities.currentExtent;
+		}
+		else {
+			VkExtent2D actualExtent = { WIDTH, HEIGHT };
+
+			actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+			actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
+
+			//
+			std::cout << actualExtent.width << std::endl << actualExtent.height << std::endl;
+
+			return actualExtent;
+		}
+	}
 
 	// Create logical device
 	void createLogicalDevice() {

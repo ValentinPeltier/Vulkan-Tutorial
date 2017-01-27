@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <vulkan/vulkan.h>
-
+ 
 struct QueueFamilyIndices {
 	int graphicsFamily = -1;
 	int presentFamily = -1;
